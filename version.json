@@ -1,16 +1,6 @@
 {
   "apps": [
     {
-      "name": "Moviebox 2",
-      "versions": [
-        {
-          "version": "2",
-          "link": "https://facebook.com",
-          "date": "8/24/2026"
-        }
-      ]
-    },
-    {
       "name": "Moviebox",
       "versions": [
         {
