@@ -1,0 +1,14 @@
+{
+  "apps": [
+    {
+      "name": "Moviebox",
+      "versions": [
+        {
+          "version": "1",
+          "link": "https://google.com",
+          "date": "8/24/2026"
+        }
+      ]
+    }
+  ]
+}
