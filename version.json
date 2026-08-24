@@ -1,14 +1,3 @@
 {
-  "apps": [
-    {
-      "name": "Moviebox",
-      "versions": [
-        {
-          "version": "v1.0",
-          "link": "Moviebox.Diamond.V1.0.3.0.15.0513.03.apk",
-          "date": "8/24/2026"
-        }
-      ]
-    }
-  ]
+  "apps": []
 }
