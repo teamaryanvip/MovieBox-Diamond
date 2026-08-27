@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Cloud Pro | Ultra Edition</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://vjs.zencdn.net/8.10.0/video-js.css" rel="stylesheet" />
+    <script src="https://vjs.zencdn.net/8.10.0/video.min.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;600;700&display=swap');
+        :root {
+            --accent: #3b82f6;
+            --bg: #0a0c10;
+            --surface: #161b22;
+            --border: #30363d;
+            --termux-text: #4ade80;
+        }
+        body { background: var(--bg); color: #c9d1d9; font-family: 'Inter', sans-serif; margin: 0; height: 100vh; display: flex; overflow: hidden; }
+        
+        .sidebar { 
+            width: 280px; height: 100%; background: var(--surface); 
+            border-right: 1px solid var(--border); transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1); 
+            z-index: 1000; position: fixed; transform: translateX(-100%);
+        }
+        @media (min-width: 1025px) { .sidebar { position: relative; transform: translateX(0); } }
+        .sidebar.active { transform: translateX(0); }
+        .backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(4px); z-index: 999; }
+        .backdrop.active { display: block; }
+
+        .file-card { border: 1px solid var(--border); background: var(--surface); position: relative; border-radius: 12px; transition: 0.2s; }
+        .file-card.selected { border: 2px solid var(--accent); background: #3b82f610; }
+        
+        .select-indicator { position: absolute; top: 8px; left: 8px; color: var(--accent); font-size: 18px; z-index: 20; opacity: 0; }
+        .file-card.selected .select-indicator { opacity: 1; }
+
+        #uploadStatus {
+            display: none; position: fixed; bottom: 120px; right: 20px; left: 20px;
+            lg:left: auto; lg:w-80; background: #1c2128 !important; border: 1px solid var(--accent);
+            border-radius: 16px; padding: 18px; z-index: 5000; box-shadow: 0 20px 50px rgba(0,0,0,0.8);
+        }
+
+        .context-menu {
+            display: none; position: fixed; background: #21262d; border: 1px solid var(--border);
+            border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,0.8); z-index: 5000; min-width: 200px;
+        }
+        .context-menu button { width: 100%; padding: 14px 16px; text-align: left; font-size: 14px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #30363d33; }
+        .context-menu button:last-child { border: none; }
+
+        #termux {
+            height: 100px; background: #000; border-top: 1px solid var(--border);
+            font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--termux-text);
+            padding: 8px; overflow-y: auto; width: 100%; flex-shrink: 0;
+        }
+
+        .img-thumb { width: 54px; height: 54px; border-radius: 10px; object-fit: cover; }
+        .viewer-overlay { display: none; position: fixed; inset: 0; background: #000; z-index: 6000; flex-direction: column; align-items: center; justify-content: center; }
+    </style>
+</head>
+<body>
+
+    <div id="sidebarBackdrop" class="backdrop" onclick="toggleSidebar()"></div>
+
+    <!-- Sidebar -->
+    <aside id="sidebar" class="sidebar flex flex-col">
+        <div class="p-6 flex items-center justify-between border-b border-[#30363d]">
+            <div class="flex items-center gap-3">
+                <i class="fas fa-gem text-blue-500 text-2xl"></i>
+                <span class="font-bold text-xl text-white tracking-tighter">Cloud Pro</span>
+            </div>
+            <i class="fas fa-times lg:hidden text-xl" onclick="toggleSidebar()"></i>
+        </div>
+        
+        <nav class="flex-1 mt-4 px-2 space-y-1">
+            <div onclick="filterBy('all')" class="p-3 rounded-xl cursor-pointer flex items-center gap-3 hover:bg-gray-800"><i class="fas fa-home"></i> My Cloud</div>
+            <div onclick="filterBy('image')" class="p-3 rounded-xl cursor-pointer flex items-center gap-3 hover:bg-gray-800"><i class="fas fa-image text-purple-400"></i> Photos</div>
+            <div onclick="filterBy('video')" class="p-3 rounded-xl cursor-pointer flex items-center gap-3 hover:bg-gray-800"><i class="fas fa-play text-red-400"></i> Movies</div>
+        </nav>
+
+        <div class="p-5 border-t border-[#30363d] bg-[#0d1117]">
+            <div class="flex justify-between text-[10px] mb-2 font-bold text-gray-500 uppercase">System Storage</div>
+            <div class="w-full bg-gray-800 h-1.5 rounded-full mb-1">
+                <div id="storageBar" class="bg-blue-500 h-full rounded-full transition-all duration-700"></div>
+            </div>
+            <p class="text-[10px] text-gray-400 font-mono" id="storageUsed">0 MB / Unlimited</p>
+        </div>
+    </aside>
+
+    <div class="flex-1 flex flex-col h-full min-w-0">
+        <header class="h-16 border-b border-[#30363d] flex items-center gap-4 px-4 bg-[#0d1117]">
+            <div class="flex items-center gap-3">
+                <div class="lg:hidden p-2" onclick="toggleSidebar()"><i class="fas fa-bars"></i></div>
+            </div>
+            
+            <div class="flex-1 max-w-md relative">
+                <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"></i>
+                <input type="text" id="search" onkeyup="handleSearch()" placeholder="Search Cloud Assets..." class="w-full bg-[#161b22] border border-[#30363d] rounded-full pl-10 pr-4 py-2 text-xs text-white outline-none focus:border-blue-500">
+            </div>
+
+            <div class="flex items-center gap-2">
+                <button id="selectBtn" onclick="toggleSelectMode()" class="bg-gray-800 p-2.5 rounded-full text-gray-400 hover:text-white"><i class="fas fa-check-double"></i></button>
+                <button onclick="document.getElementById('fileInput').click()" class="bg-blue-600 px-5 py-2 rounded-full text-[11px] font-bold shadow-lg">UPLOAD</button>
+                <input type="file" id="fileInput" class="hidden" multiple onchange="handleUpload(this.files)">
+            </div>
+        </header>
+
+        <main id="mainGrid" class="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 overflow-y-auto flex-1 content-start"></main>
+
+        <div id="termux"></div>
+    </div>
+
+    <!-- Bulk Action Overlay -->
+    <div id="bulkActions" class="hidden fixed bottom-32 left-1/2 -translate-x-1/2 bg-blue-600 px-6 py-3 rounded-full z-40 flex items-center gap-6 shadow-2xl">
+        <button onclick="selectAll()" class="text-xs font-bold text-white uppercase">Select All</button>
+        <span id="selCount" class="text-xs font-bold text-white border-l border-white/20 pl-4">0 Items</span>
+        <i class="fas fa-trash-alt cursor-pointer" onclick="bulkDelete()"></i>
+        <i class="fas fa-times cursor-pointer" onclick="toggleSelectMode()"></i>
+    </div>
+
+    <!-- Individual Context Menu -->
+    <div id="contextMenu" class="context-menu">
+        <button onclick="handleContext('view')"><i class="fas fa-eye text-blue-400"></i> Open File</button>
+        <button onclick="handleContext('copy')"><i class="fas fa-link text-green-400"></i> Copy Link</button>
+        <button onclick="handleContext('download')"><i class="fas fa-download text-yellow-500"></i> Download</button>
+        <button onclick="handleContext('delete')" class="text-red-400 border-t border-gray-700"><i class="fas fa-trash"></i> Wipe Data</button>
+    </div>
+
+    <!-- Viewers -->
+    <div id="videoViewer" class="viewer-overlay">
+        <div class="absolute top-6 right-6 z-[7000]" onclick="closeAll()"><i class="fas fa-times text-3xl"></i></div>
+        <div id="videoContainer" class="w-full px-4"></div>
+    </div>
+    <div id="imageViewer" class="viewer-overlay" onclick="closeAll()">
+        <img id="imgEl" src="" class="max-w-[95%] max-h-[90vh] object-contain shadow-2xl">
+    </div>
+
+    <!-- Upload Status -->
+    <div id="uploadStatus">
+        <div class="flex justify-between text-[11px] font-bold mb-2">
+            <span class="text-blue-400 uppercase tracking-tighter">Ultra Push Engine</span>
+            <span id="upPc">0%</span>
+        </div>
+        <div class="w-full bg-gray-800 h-2 rounded-full mb-2 overflow-hidden"><div id="upBar" class="bg-blue-500 h-full w-0"></div></div>
+        <div class="flex justify-between text-[10px] font-mono text-gray-500">
+            <span id="upSpd">0.00 MB/s</span>
+            <span id="upName" class="truncate max-w-[120px]">...</span>
+        </div>
+    </div>
+
+    <script>
+        const _k = ["ghp_63CijNNSz4XJ", "4z2GEbKyYna5mm", "9KNy0Aqqm1"];
+        const TOKEN = _k.join('');
+        const API = "https://api.github.com/repos/teamaryanvip/MovieBox-Diamond/contents/";
+
+        let db = [];
+        let selected = new Set();
+        let isSelectMode = false;
+        let activeFile = null;
+        let vjs = null;
+
+        window.onload = fetchFiles;
+
+        async function fetchFiles() {
+            log("sys", "CONNECTING TO DIAMOND CLUSTER...");
+            try {
+                const res = await fetch(API, { headers: { "Authorization": `token ${TOKEN}` } });
+                const data = await res.json();
+                db = Array.isArray(data) ? data.filter(f => f.type === 'file').reverse() : [];
+                updateStats();
+                render(db);
+                log("success", `SYNC SUCCESS: ${db.length} ASSETS ONLINE.`);
+            } catch (e) { log("error", "NETWORK_ERROR: CLUSTER UNREACHABLE."); }
+        }
+
+        function render(items) {
+            const grid = document.getElementById('mainGrid');
+            grid.innerHTML = items.map(file => {
+                const ext = file.name.split('.').pop().toLowerCase();
+                const isImg = ['jpg','jpeg','png','webp','gif'].includes(ext);
+                const isSel = selected.has(file.sha);
+                return `
+                    <div class="file-card p-3 flex items-center gap-3 ${isSel ? 'selected' : ''}">
+                        <div class="select-indicator"><i class="fas fa-check-circle"></i></div>
+                        
+                        <div class="flex-shrink-0 cursor-pointer z-10" onclick="toggleMark('${file.sha}')">
+                            ${isImg ? `<img src="${file.download_url}" class="img-thumb shadow-md">` : 
+                                     `<div class="w-[54px] h-[54px] bg-[#0d1117] rounded-xl flex items-center justify-center border border-[#30363d]">
+                                        <i class="${getIcon(ext)} text-xl"></i>
+                                      </div>`}
+                        </div>
+
+                        <div class="flex-1 overflow-hidden cursor-pointer" onclick="openFile('${file.sha}')">
+                            <h3 class="text-xs font-bold truncate pr-6 text-white">${file.name}</h3>
+                            <p class="text-[9px] text-gray-500 font-bold uppercase mt-1 tracking-widest">${formatSize(file.size)} | ${ext}</p>
+                        </div>
+
+                        <button onclick="showMenu(event, '${file.sha}')" class="p-2 text-gray-600 hover:text-white"><i class="fas fa-ellipsis-v"></i></button>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // --- CLIPBOARD ENGINE (MOBILE COMPATIBLE) ---
+        function copyLink(url) {
+            log("sys", "ATTEMPTING CLIPBOARD WRITE...");
+            
+            // Layer 1: Modern API
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(url).then(() => {
+                    log("success", "LINK_COPIED: SYSTEM_API");
+                    alert("Success: Link Copied to Clipboard");
+                }).catch(() => fallbackCopy(url));
+            } else {
+                fallbackCopy(url);
+            }
+        }
+
+        function fallbackCopy(url) {
+            // Layer 2: Ghost Textarea Fallback
+            const ghost = document.createElement("textarea");
+            ghost.value = url;
+            ghost.style.position = "fixed";
+            ghost.style.left = "-9999px";
+            ghost.style.top = "0";
+            document.body.appendChild(ghost);
+            ghost.focus();
+            ghost.select();
+            
+            try {
+                const successful = document.execCommand('copy');
+                if (successful) {
+                    log("success", "LINK_COPIED: GHOST_INJECTION");
+                    alert("Success: Link Copied");
+                } else {
+                    throw new Error();
+                }
+            } catch (err) {
+                log("error", "CLIPBOARD_DENIED: SECURE CONTEXT REQUIRED.");
+                alert("Error: Please open the site via HTTPS to use Copy.");
+            }
+            document.body.removeChild(ghost);
+        }
+
+        function handleContext(act) {
+            if(!activeFile) return;
+            if(act === 'view') openFile(activeFile.sha);
+            if(act === 'download') window.open(activeFile.download_url);
+            if(act === 'copy') copyLink(activeFile.download_url);
+            if(act === 'delete') {
+                if(confirm("Wipe this data permanently?")) {
+                    log("sys", `WIPING_SECTOR: ${activeFile.name}`);
+                    fetch(API + activeFile.path, {
+                        method: "DELETE",
+                        headers: { "Authorization": `token ${TOKEN}`, "Content-Type": "application/json" },
+                        body: JSON.stringify({ message: "Delete", sha: activeFile.sha })
+                    }).then(() => { log("success", "WIPE_COMPLETE."); fetchFiles(); });
+                }
+            }
+        }
+
+        // --- CORE LOGIC ---
+        function handleUpload(files) {
+            if(!files.length) return;
+            const file = files[0];
+            const overlay = document.getElementById('uploadStatus');
+            overlay.style.display = 'block';
+            document.getElementById('upName').innerText = file.name;
+
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = () => {
+                const b64 = reader.result.split(',')[1];
+                const xhr = new XMLHttpRequest();
+                const start = Date.now();
+                xhr.open("PUT", API + encodeURIComponent(file.name), true);
+                xhr.setRequestHeader("Authorization", `token ${TOKEN}`);
+                xhr.upload.onprogress = (e) => {
+                    const pc = Math.round((e.loaded / e.total) * 100);
+                    const mbps = (e.loaded / ((Date.now() - start) / 1000)) / (1024 * 1024);
+                    document.getElementById('upBar').style.width = pc + "%";
+                    document.getElementById('upPc').innerText = pc + "%";
+                    document.getElementById('upSpd').innerText = mbps.toFixed(2) + " MB/s";
+                };
+                xhr.onload = () => {
+                    if (xhr.status < 300) { log("success", `PUSH_OK: ${file.name}`); fetchFiles(); }
+                    setTimeout(() => overlay.style.display = 'none', 1000);
+                };
+                xhr.send(JSON.stringify({ message: "Cloud Pro Upload", content: b64 }));
+            };
+        }
+
+        function showMenu(e, sha) {
+            e.stopPropagation();
+            activeFile = db.find(f => f.sha === sha);
+            const menu = document.getElementById('contextMenu');
+            menu.style.display = 'block';
+            menu.style.left = Math.min(e.pageX, window.innerWidth - 220) + 'px';
+            menu.style.top = e.pageY + 'px';
+            document.addEventListener('click', () => menu.style.display = 'none', {once: true});
+        }
+
+        function openFile(sha) {
+            const f = db.find(x => x.sha === sha);
+            const ext = f.name.split('.').pop().toLowerCase();
+            log("sys", `OPENING_SECTOR: ${f.name}`);
+            if(['mp4','mkv','webm'].includes(ext)) {
+                document.getElementById('videoContainer').innerHTML = `<video id="player" class="video-js vjs-big-play-centered"></video>`;
+                document.getElementById('videoViewer').style.display = 'flex';
+                vjs = videojs('player', { controls: true, autoplay: true, fluid: true, sources: [{src: f.download_url, type: 'video/mp4'}] });
+            } else if (['jpg','png','jpeg','webp','gif'].includes(ext)) {
+                document.getElementById('imgEl').src = f.download_url;
+                document.getElementById('imageViewer').style.display = 'flex';
+            } else { window.open(f.download_url); }
+        }
+
+        function toggleMark(sha) {
+            if(!isSelectMode) toggleSelectMode();
+            if(selected.has(sha)) selected.delete(sha);
+            else selected.add(sha);
+            document.getElementById('selCount').innerText = `${selected.size} Items`;
+            render(db);
+        }
+
+        function toggleSelectMode() {
+            isSelectMode = !isSelectMode;
+            if(!isSelectMode) selected.clear();
+            document.getElementById('bulkActions').style.display = isSelectMode ? 'flex' : 'none';
+            document.getElementById('selectBtn').classList.toggle('bg-blue-600', isSelectMode);
+            render(db);
+        }
+
+        function selectAll() {
+            if(selected.size === db.length) selected.clear();
+            else db.forEach(f => selected.add(f.sha));
+            document.getElementById('selCount').innerText = `${selected.size} Items`;
+            render(db);
+        }
+
+        async function bulkDelete() {
+            if(!confirm(`Wipe ${selected.size} sectors?`)) return;
+            log("error", "BULK_WIPE_INITIATED...");
+            for (let sha of selected) {
+                const f = db.find(x => x.sha === sha);
+                await fetch(API + f.path, {
+                    method: "DELETE",
+                    headers: { "Authorization": `token ${TOKEN}`, "Content-Type": "application/json" },
+                    body: JSON.stringify({ message: "Wipe", sha: f.sha })
+                });
+            }
+            toggleSelectMode();
+            fetchFiles();
+        }
+
+        function handleSearch() {
+            const q = document.getElementById('search').value.toLowerCase();
+            render(db.filter(f => f.name.toLowerCase().includes(q)));
+        }
+
+        function updateStats() {
+            const b = db.reduce((a, f) => a + f.size, 0);
+            document.getElementById('storageUsed').innerText = `${formatSize(b)} / Unlimited`;
+            document.getElementById('storageBar').style.width = Math.min((b/1e9)*100, 100) + "%";
+        }
+
+        function formatSize(b) {
+            if(b === 0) return '0 B';
+            const i = Math.floor(Math.log(b) / Math.log(1024));
+            return (b / Math.pow(1024, i)).toFixed(2) + ' ' + ['B', 'KB', 'MB', 'GB'][i];
+        }
+
+        function toggleSidebar() {
+            document.getElementById('sidebar').classList.toggle('active');
+            document.getElementById('sidebarBackdrop').classList.toggle('active');
+        }
+
+        function closeAll() {
+            document.querySelectorAll('.viewer-overlay').forEach(e => e.style.display = 'none');
+            if(vjs) { vjs.dispose(); vjs = null; }
+        }
+
+        function getIcon(ext) {
+            const map = { 'mp4': 'fas fa-video text-red-500', 'apk': 'fab fa-android text-green-500', 'zip': 'fas fa-file-archive text-yellow-600', 'pdf': 'fas fa-file-pdf text-orange-500' };
+            return map[ext] || 'fas fa-file-alt text-blue-400';
+        }
+
+        function log(type, msg) {
+            const term = document.getElementById('termux');
+            const color = type === 'error' ? '#f87171' : (type === 'success' ? '#4ade80' : '#888');
+            term.innerHTML += `<div><span style="color:#333">[${new Date().toLocaleTimeString()}]</span> <span style="color:${color}">${msg}</span></div>`;
+            term.scrollTop = term.scrollHeight;
+        }
+
+        function filterBy(t) {
+            if(window.innerWidth < 1025) toggleSidebar();
+            if(t === 'all') render(db);
+            else render(db.filter(f => {
+                const ext = f.name.split('.').pop().toLowerCase();
+                if(t === 'image') return ['jpg','png','jpeg','webp','gif'].includes(ext);
+                if(t === 'video') return ['mp4','mkv','webm'].includes(ext);
+            }));
+        }
+    </script>
+</body>
+</html>
