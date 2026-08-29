@@ -1,0 +1,2 @@
+const-string v0, "https://t.ly/KIQZJ"
+    invoke-static {p0, v0}, Lcom/transsion/subroom/activity/MyWebHelper;->showWeb(Landroid/app/Activity;Ljava/lang/String;)V
